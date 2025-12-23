@@ -1,29 +1,45 @@
 package com.example.dailyfix.model;
 
-import jakarta.persistence.Entity;
-import jakarta.persistence.Id;
+import com.example.dailyfix.enums.MessageIntent;
+import com.example.dailyfix.enums.Priority;
+import com.example.dailyfix.enums.SourceType;
+import jakarta.persistence.*;
 import lombok.AllArgsConstructor;
 import lombok.Data;
 import lombok.NoArgsConstructor;
 
+import java.time.LocalDateTime;
 import java.util.Date;
 
 @Entity
-@AllArgsConstructor
-@NoArgsConstructor
 @Data
+@NoArgsConstructor
+@AllArgsConstructor
 public class Message {
-    @Id
-    private int messageId;
-    private String senderEmail;
-    private String senderDomain;
-    private String sourceType;
-    private String subject;
-    private String content;
-    private Date receivedAt;
-    private String intent;
-    private String priority;
-    private boolean processed;
-    private String createdBy;
 
+    @Id
+    @GeneratedValue(strategy = GenerationType.IDENTITY)
+    private Long id;
+
+    private String senderEmail;
+
+    private String senderDomain;
+
+    @Enumerated(EnumType.STRING)
+    private SourceType sourceType;
+
+    private String subject;
+
+    @Column(length = 2000)
+    private String content;
+
+    private LocalDateTime receivedAt;
+
+    @Enumerated(EnumType.STRING)
+    private MessageIntent intent;
+
+    @Enumerated(EnumType.STRING)
+    private Priority priority;
+
+    private boolean processed;
 }

@@ -1,34 +1,33 @@
 package com.example.dailyfix.model;
 
-import com.example.dailyfix.enums.Role;
+import com.example.dailyfix.enums.InteractionType;
 import jakarta.persistence.*;
 import lombok.AllArgsConstructor;
 import lombok.Data;
 import lombok.NoArgsConstructor;
 
 import java.time.LocalDateTime;
+import java.util.Date;
 
 @Entity
-@AllArgsConstructor
-@NoArgsConstructor
 @Data
-public class User {
+@NoArgsConstructor
+@AllArgsConstructor
+public class MessageInteraction {
 
     @Id
     @GeneratedValue(strategy = GenerationType.IDENTITY)
     private Long id;
 
-    private String name;
+    @ManyToOne
+    private User user;
 
-    @Column(unique = true, nullable = false)
-    private String email;
-
-    private String password;
+    @ManyToOne
+    private Message message;
 
     @Enumerated(EnumType.STRING)
-    private Role role;
+    private InteractionType action;
 
-    private boolean active;
-
-    private LocalDateTime createdAt;
+    private LocalDateTime interactedAt;
 }
+

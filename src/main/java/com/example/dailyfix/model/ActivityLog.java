@@ -1,6 +1,6 @@
 package com.example.dailyfix.model;
 
-import com.example.dailyfix.enums.Role;
+import com.example.dailyfix.enums.ActionType;
 import jakarta.persistence.*;
 import lombok.AllArgsConstructor;
 import lombok.Data;
@@ -9,26 +9,26 @@ import lombok.NoArgsConstructor;
 import java.time.LocalDateTime;
 
 @Entity
-@AllArgsConstructor
-@NoArgsConstructor
 @Data
-public class User {
+@NoArgsConstructor
+@AllArgsConstructor
+public class ActivityLog {
 
     @Id
     @GeneratedValue(strategy = GenerationType.IDENTITY)
     private Long id;
 
-    private String name;
-
-    @Column(unique = true, nullable = false)
-    private String email;
-
-    private String password;
+    @ManyToOne
+    private Task task;
 
     @Enumerated(EnumType.STRING)
-    private Role role;
+    private ActionType action;
 
-    private boolean active;
+    @ManyToOne
+    private User performedBy;
 
-    private LocalDateTime createdAt;
+    private LocalDateTime performedAt;
+
+    private String remarks;
 }
+

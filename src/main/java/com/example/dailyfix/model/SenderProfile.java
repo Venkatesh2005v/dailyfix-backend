@@ -1,34 +1,31 @@
 package com.example.dailyfix.model;
 
-import com.example.dailyfix.enums.Role;
+import com.example.dailyfix.enums.TrustLevel;
 import jakarta.persistence.*;
 import lombok.AllArgsConstructor;
 import lombok.Data;
 import lombok.NoArgsConstructor;
 
 import java.time.LocalDateTime;
+import java.util.Date;
 
 @Entity
-@AllArgsConstructor
-@NoArgsConstructor
 @Data
-public class User {
+@NoArgsConstructor
+@AllArgsConstructor
+public class SenderProfile {
 
     @Id
     @GeneratedValue(strategy = GenerationType.IDENTITY)
     private Long id;
 
-    private String name;
-
-    @Column(unique = true, nullable = false)
-    private String email;
-
-    private String password;
+    @Column(unique = true)
+    private String senderDomain;
 
     @Enumerated(EnumType.STRING)
-    private Role role;
+    private TrustLevel trustLevel;
 
-    private boolean active;
+    private boolean promotional;
 
     private LocalDateTime createdAt;
 }
