@@ -20,38 +20,48 @@ public class PriorityService {
         this.senderProfileRepository = senderProfileRepository;
     }
 
+
     public Priority calculatePriority(Message message) {
 
         int totalScore = 0;
+
         totalScore += calculateTrustScore(message);
         totalScore += calculateIntentScore(message);
         totalScore += calculateSourceScore(message);
         totalScore += calculateKeywordScore(message);
 
         return mapScoreToPriority(totalScore);
-
     }
 
     private int calculateTrustScore(Message message) {
+
+        if (message.getSenderEmail() == null) {
+            return -10;
+        }
+
         String domain = extractDomain(message.getSenderEmail());
 
         Optional<SenderProfile> senderProfile =
                 senderProfileRepository.findBySenderDomain(domain);
 
-        if(senderProfile.isEmpty()){
+        if (senderProfile.isEmpty()) {
             return -10;
         }
 
         TrustLevel trust = senderProfile.get().getTrustLevel();
 
-        if(trust == TrustLevel.HIGH) return 40;
-        else if(trust == TrustLevel.MEDIUM) return 20;
-        else return -30;
-
+        return switch (trust) {
+            case HIGH -> 40;
+            case MEDIUM -> 20;
+            case LOW -> -30;
+        };
     }
 
     private int calculateIntentScore(Message message) {
-        String text = (message.getSubject() + " " + message.getContent()).toLowerCase();
+
+        String subject = message.getSubject() == null ? "" : message.getSubject();
+        String content = message.getContent() == null ? "" : message.getContent();
+        String text = (subject + " " + content).toLowerCase();
 
         if (text.contains("failed") || text.contains("action required")) {
             message.setIntent(MessageIntent.ACTION_REQUIRED);
@@ -68,23 +78,40 @@ public class PriorityService {
     }
 
     private int calculateSourceScore(Message message) {
+
         SourceType source = message.getSourceType();
 
-        if (source == SourceType.SYSTEM) return 30;
-        if (source == SourceType.INTERNAL) return 20;
-        return 0;
+        if (source == null) return 0;
+
+        return switch (source) {
+            case SYSTEM -> 30;
+            case INTERNAL -> 20;
+            case EMAIL -> 0;
+        };
     }
 
     private int calculateKeywordScore(Message message) {
+
+        if (message.getContent() == null) {
+            return 0;
+        }
+
         String text = message.getContent().toLowerCase();
+        int score = 0;
 
-        if (text.contains("error") || text.contains("failed")) return 20;
-        if (text.contains("deadline")) return 15;
+        if (text.contains("error") || text.contains("failed")) {
+            score += 20;
+        }
 
-        return 0;
+        if (text.contains("deadline")) {
+            score += 15;
+        }
+
+        return score;
     }
 
     private Priority mapScoreToPriority(int score) {
+
         if (score >= 60) return Priority.HIGH;
         if (score >= 30) return Priority.MEDIUM;
         if (score >= 10) return Priority.LOW;
@@ -92,6 +119,7 @@ public class PriorityService {
     }
 
     private String extractDomain(String email) {
+        if (!email.contains("@")) return "";
         return email.substring(email.indexOf("@") + 1).toLowerCase();
     }
 }
