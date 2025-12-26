@@ -7,6 +7,7 @@ import com.example.dailyfix.repository.MessageRepository;
 import org.springframework.stereotype.Service;
 
 import java.time.LocalDateTime;
+import java.util.List;
 
 @Service
 public class MessageService {
@@ -51,6 +52,30 @@ public class MessageService {
             message.setProcessed(false);
         }
         messageRepository.save(message);
+    }
+
+    public List<Message> getAllMessages() {
+        return messageRepository.findAll();
+    }
+
+    public Message getMessageById(Long messageId) {
+        return messageRepository.findById(messageId)
+                .orElseThrow(() -> new RuntimeException("Message not found"));
+    }
+
+
+    public void reprocessMessage(Long messageId) {
+        Message message = getMessageById(messageId);
+        message.setProcessed(false);
+        processMessage(message);
+    }
+
+    public List<Message> getMessagesByPriority(Priority priority) {
+        return messageRepository.findByPriority(priority);
+    }
+
+    public List<Message> getUnprocessedMessages() {
+        return messageRepository.findByProcessedFalse();
     }
 
 }

@@ -1,25 +1,26 @@
 package com.example.dailyfix.service;
 
-import com.example.dailyfix.enums.MessageIntent;
-import com.example.dailyfix.enums.Priority;
-import com.example.dailyfix.enums.SourceType;
-import com.example.dailyfix.enums.TrustLevel;
+import com.example.dailyfix.enums.*;
 import com.example.dailyfix.model.Message;
+import com.example.dailyfix.model.MessageInteraction;
 import com.example.dailyfix.model.SenderProfile;
+import com.example.dailyfix.repository.MessageInteractionRepository;
 import com.example.dailyfix.repository.SenderProfileRepository;
 import org.springframework.stereotype.Service;
 
+import java.util.List;
 import java.util.Optional;
 
 @Service
 public class PriorityService {
 
     private final SenderProfileRepository senderProfileRepository;
+    private final MessageInteractionRepository messageInteractionRepository;
 
-    public PriorityService(SenderProfileRepository senderProfileRepository) {
+    public PriorityService(SenderProfileRepository senderProfileRepository, MessageInteractionRepository messageInteractionRepository) {
         this.senderProfileRepository = senderProfileRepository;
+        this.messageInteractionRepository = messageInteractionRepository;
     }
-
 
     public Priority calculatePriority(Message message) {
 
@@ -29,9 +30,41 @@ public class PriorityService {
         totalScore += calculateIntentScore(message);
         totalScore += calculateSourceScore(message);
         totalScore += calculateKeywordScore(message);
+        totalScore += calculateUserBehaviorScore(message);
 
         return mapScoreToPriority(totalScore);
     }
+
+    private int calculateUserBehaviorScore(Message message) {
+
+        String domain = extractDomain(message.getSenderEmail());
+
+        List<MessageInteraction> interactions =
+                messageInteractionRepository.findByMessage_SenderDomain(domain);
+
+        if (interactions.isEmpty()) {
+            return 0;
+        }
+
+        long openedCount = interactions.stream()
+                .filter(i -> i.getAction() == InteractionType.OPENED)
+                .count();
+
+        long ignoredCount = interactions.stream()
+                .filter(i -> i.getAction() == InteractionType.IGNORED)
+                .count();
+
+        if (ignoredCount > openedCount) {
+            return -40;
+        }
+
+        if (openedCount >= ignoredCount) {
+            return 10;
+        }
+
+        return -10;
+    }
+
 
     private int calculateTrustScore(Message message) {
 
