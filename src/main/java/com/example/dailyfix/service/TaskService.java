@@ -14,20 +14,22 @@ import com.example.dailyfix.repository.UserRepository;
 import org.springframework.stereotype.Service;
 
 import java.time.LocalDateTime;
+import java.util.List;
+import java.util.Optional;
 
 @Service
 public class TaskService {
 
     private final TaskRepository taskRepository;
     private final UserRepository userRepository;
-    private final ActivityLogRepository activityLogRepository;
+    private final ActivityLogService activityLogService;
 
     public TaskService(TaskRepository taskRepository,
                        UserRepository userRepository,
-                       ActivityLogRepository activityLogRepository) {
+                       ActivityLogService activityLogService) {
         this.taskRepository = taskRepository;
         this.userRepository = userRepository;
-        this.activityLogRepository = activityLogRepository;
+        this.activityLogService = activityLogService;
     }
 
     public void createTaskFromMessage(Message message) {
@@ -42,7 +44,14 @@ public class TaskService {
 
         taskRepository.save(task);
 
-        logTaskCreation(task);
+        User assignedUser = task.getAssignedTo();
+
+        activityLogService.logActivity(
+                task,
+                assignedUser,
+                ActionType.CREATED,
+                "Task created from message"
+        );
     }
 
     private void validateMessage(Message message) {
@@ -67,6 +76,9 @@ public class TaskService {
 
     private void assignTask(Task task) {
         User admin = userRepository.findFirstByRole(Role.ADMIN);
+        if (admin == null) {
+            throw new RuntimeException("No admin user found");
+        }
         task.setAssignedTo(admin);
     }
 
@@ -82,13 +94,56 @@ public class TaskService {
         }
     }
 
-    private void logTaskCreation(Task task) {
-        ActivityLog log = new ActivityLog();
-        log.setTask(task);
-        log.setAction(ActionType.CREATED);
-        log.setPerformedAt(LocalDateTime.now());
-        log.setRemarks("Task created from message");
-        activityLogRepository.save(log);
+    public List<Task> getAllTasks() {
+        return taskRepository.findAll();
+    }
+
+    public Optional<Task> getTaskById(Long id) {
+        return taskRepository.findById(id);
+    }
+
+    public List<Task> getTasksByStatus(TaskStatus status) {
+        return taskRepository.findByStatus(status);
+    }
+
+    public void completeTask(Long taskId, Long userId) {
+
+        Task task = taskRepository.findById(taskId)
+                .orElseThrow(() -> new RuntimeException("Task not found"));
+
+        User user = userRepository.findById(userId)
+                .orElseThrow(() -> new RuntimeException("User not found"));
+
+        task.setStatus(TaskStatus.COMPLETED);
+        taskRepository.save(task);
+
+        activityLogService.logActivity(
+                task,
+                user,
+                ActionType.COMPLETED,
+                "Task marked as completed"
+        );
+    }
+
+
+    public void reassignTask(Long taskId, Long userId) {
+
+        Task task = taskRepository.findById(taskId)
+                .orElseThrow(() -> new RuntimeException("Task not found"));
+
+        User newUser = userRepository.findById(userId)
+                .orElseThrow(() -> new RuntimeException("User not found"));
+
+        task.setAssignedTo(newUser);
+        taskRepository.save(task);
+
+        activityLogService.logActivity(
+                task,
+                newUser,
+                ActionType.REASSIGNED,
+                "Task reassigned to another user"
+        );
     }
 }
+
 

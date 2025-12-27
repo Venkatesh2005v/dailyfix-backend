@@ -21,8 +21,10 @@ public class Message {
     @GeneratedValue(strategy = GenerationType.IDENTITY)
     private Long id;
 
-    private String senderEmail;
+    @ManyToOne
+    private User user;
 
+    private String senderEmail;
     private String senderDomain;
 
     @Enumerated(EnumType.STRING)

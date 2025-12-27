@@ -1,9 +1,16 @@
 package com.example.dailyfix.repository;
 
+import com.example.dailyfix.enums.TaskStatus;
 import com.example.dailyfix.model.Task;
+import org.jspecify.annotations.Nullable;
 import org.springframework.data.jpa.repository.JpaRepository;
 import org.springframework.stereotype.Repository;
 
+import java.util.List;
+
 @Repository
 public interface TaskRepository extends JpaRepository<Task, Long> {
+
+    List<Task> findByStatus(TaskStatus status);
 }
+

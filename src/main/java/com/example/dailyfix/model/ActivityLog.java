@@ -21,14 +21,15 @@ public class ActivityLog {
     @ManyToOne
     private Task task;
 
-    @Enumerated(EnumType.STRING)
-    private ActionType action;
-
     @ManyToOne
     private User performedBy;
 
-    private LocalDateTime performedAt;
+    @Enumerated(EnumType.STRING)
+    private ActionType action;
 
+    private LocalDateTime performedAt;
     private String remarks;
 }
+
+
 

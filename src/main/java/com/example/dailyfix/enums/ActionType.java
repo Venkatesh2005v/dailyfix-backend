@@ -1,5 +1,5 @@
 package com.example.dailyfix.enums;
 
 public enum ActionType {
-    CREATED, UPDATED, ESCALATED, COMPLETED
+    CREATED, UPDATED, ESCALATED, REASSIGNED, COMPLETED
 }

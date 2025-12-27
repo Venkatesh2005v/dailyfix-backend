@@ -20,12 +20,15 @@ public class MessageController {
         this.messageService = messageService;
     }
 
-    @PostMapping
-    public ResponseEntity<String> receiveMessage(@RequestBody MessageRequest request){
-        messageService.receiveMessage(request);
-
-        return new ResponseEntity<>("Message received and processed successfully", HttpStatus.CREATED);
+    @PostMapping("/user/{userId}")
+    public ResponseEntity<String> receiveMessage(
+            @PathVariable Long userId,
+            @RequestBody MessageRequest request
+    ) {
+        messageService.receiveMessage(userId, request);
+        return ResponseEntity.status(HttpStatus.CREATED).body("Message received");
     }
+
 
     @GetMapping
     public ResponseEntity<List<Message>> getAllMessages() {

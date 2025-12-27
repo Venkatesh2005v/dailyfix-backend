@@ -21,8 +21,6 @@ public class Task {
     private Long id;
 
     private String title;
-
-    @Column(length = 2000)
     private String description;
 
     @Enumerated(EnumType.STRING)
@@ -31,15 +29,14 @@ public class Task {
     @Enumerated(EnumType.STRING)
     private TaskStatus status;
 
-    private LocalDateTime dueDate;
 
     @ManyToOne
     private User assignedTo;
 
-    @ManyToOne
+    @OneToOne
     private Message sourceMessage;
 
     private LocalDateTime createdAt;
-
-    private LocalDateTime completedAt;
+    private LocalDateTime dueDate;
 }
+
