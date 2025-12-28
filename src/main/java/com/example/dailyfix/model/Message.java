@@ -32,7 +32,7 @@ public class Message {
 
     private String subject;
 
-    @Column(length = 2000)
+    @Column(columnDefinition = "TEXT")
     private String content;
 
     private LocalDateTime receivedAt;

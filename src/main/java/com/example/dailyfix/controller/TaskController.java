@@ -4,6 +4,7 @@ import com.example.dailyfix.enums.TaskStatus;
 import com.example.dailyfix.model.Task;
 import com.example.dailyfix.service.TaskService;
 import org.springframework.http.ResponseEntity;
+import org.springframework.security.core.Authentication; // Added for security context
 import org.springframework.web.bind.annotation.*;
 
 import java.util.List;
@@ -19,9 +20,14 @@ public class TaskController {
         this.taskService = taskService;
     }
 
-    @GetMapping
-    public ResponseEntity<List<Task>> getAllTasks() {
-        return ResponseEntity.ok(taskService.getAllTasks());
+    /**
+     * Fetch only tasks assigned to the CURRENT logged-in user.
+     */
+    @GetMapping("/my-tasks")
+    public ResponseEntity<List<Task>> getMyTasks(Authentication authentication) {
+        // authentication.getName() retrieves the email from the secure session
+        String userEmail = authentication.getName();
+        return ResponseEntity.ok(taskService.getTasksByAssignedUserEmail(userEmail));
     }
 
     @GetMapping("/{id}")
@@ -29,17 +35,16 @@ public class TaskController {
         return ResponseEntity.ok(taskService.getTaskById(id));
     }
 
-    @GetMapping("/status/{status}")
-    public ResponseEntity<List<Task>> getTasksByStatus(@PathVariable TaskStatus status) {
-        return ResponseEntity.ok(taskService.getTasksByStatus(status));
-    }
-
+    /**
+     * Complete a task using the session identity instead of a passed userId param.
+     */
     @PutMapping("/{id}/complete")
     public ResponseEntity<String> completeTask(
             @PathVariable Long id,
-            @RequestParam Long userId
+            Authentication authentication
     ) {
-        taskService.completeTask(id, userId);
+        // We use the email from the session to find the user in the service
+        taskService.completeTaskByEmail(id, authentication.getName());
         return ResponseEntity.ok("Task marked as completed");
     }
 
@@ -51,4 +56,3 @@ public class TaskController {
         return ResponseEntity.ok("Task reassigned successfully");
     }
 }
-

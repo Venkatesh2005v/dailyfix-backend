@@ -4,13 +4,12 @@ import com.example.dailyfix.enums.ActionType;
 import com.example.dailyfix.enums.Priority;
 import com.example.dailyfix.enums.Role;
 import com.example.dailyfix.enums.TaskStatus;
-import com.example.dailyfix.model.ActivityLog;
 import com.example.dailyfix.model.Message;
 import com.example.dailyfix.model.Task;
 import com.example.dailyfix.model.User;
-import com.example.dailyfix.repository.ActivityLogRepository;
 import com.example.dailyfix.repository.TaskRepository;
 import com.example.dailyfix.repository.UserRepository;
+import org.jspecify.annotations.Nullable;
 import org.springframework.stereotype.Service;
 
 import java.time.LocalDateTime;
@@ -33,34 +32,40 @@ public class TaskService {
     }
 
     public void createTaskFromMessage(Message message) {
-
         validateMessage(message);
 
+        // 🚨 AUTOMATIC ALERT: Triggers alert if priority is HIGH
+        if (message.getPriority() == Priority.HIGH) {
+            sendPriorityAlert(message);
+        }
+
         Task task = buildTask(message);
-
         assignTask(task);
-
         setDueDate(task);
 
         taskRepository.save(task);
 
         User assignedUser = task.getAssignedTo();
-
         activityLogService.logActivity(
                 task,
                 assignedUser,
                 ActionType.CREATED,
-                "Task created from message"
+                "Task created from message automatically"
         );
     }
 
+    private void sendPriorityAlert(Message message) {
+        System.out.println("--------------------------------------------------");
+        System.out.println("🚨 AUTOMATED HIGH PRIORITY ALERT");
+        System.out.println("FROM: " + message.getSenderEmail());
+        System.out.println("SUBJECT: " + message.getSubject());
+        System.out.println("ACTION: Creating urgent task for Admin.");
+        System.out.println("--------------------------------------------------");
+    }
+
     private void validateMessage(Message message) {
-        if (message == null) {
-            throw new IllegalArgumentException("Message cannot be null");
-        }
-        if (message.isProcessed()) {
-            throw new IllegalStateException("Message already processed");
-        }
+        if (message == null) throw new IllegalArgumentException("Message cannot be null");
+        if (message.isProcessed()) throw new IllegalStateException("Message already processed");
     }
 
     private Task buildTask(Message message) {
@@ -76,15 +81,12 @@ public class TaskService {
 
     private void assignTask(Task task) {
         User admin = userRepository.findFirstByRole(Role.ADMIN);
-        if (admin == null) {
-            throw new RuntimeException("No admin user found");
-        }
+        if (admin == null) throw new RuntimeException("No admin user found");
         task.setAssignedTo(admin);
     }
 
     private void setDueDate(Task task) {
         LocalDateTime now = LocalDateTime.now();
-
         if (task.getPriority() == Priority.HIGH) {
             task.setDueDate(now.plusHours(4));
         } else if (task.getPriority() == Priority.MEDIUM) {
@@ -94,56 +96,38 @@ public class TaskService {
         }
     }
 
-    public List<Task> getAllTasks() {
-        return taskRepository.findAll();
-    }
+    public List<Task> getAllTasks() { return taskRepository.findAll(); }
 
-    public Optional<Task> getTaskById(Long id) {
-        return taskRepository.findById(id);
-    }
+    public Optional<Task> getTaskById(Long id) { return taskRepository.findById(id); }
 
-    public List<Task> getTasksByStatus(TaskStatus status) {
-        return taskRepository.findByStatus(status);
-    }
+    public List<Task> getTasksByStatus(TaskStatus status) { return taskRepository.findByStatus(status); }
 
     public void completeTask(Long taskId, Long userId) {
-
-        Task task = taskRepository.findById(taskId)
-                .orElseThrow(() -> new RuntimeException("Task not found"));
-
-        User user = userRepository.findById(userId)
-                .orElseThrow(() -> new RuntimeException("User not found"));
-
+        Task task = taskRepository.findById(taskId).orElseThrow(() -> new RuntimeException("Task not found"));
+        User user = userRepository.findById(userId).orElseThrow(() -> new RuntimeException("User not found"));
         task.setStatus(TaskStatus.COMPLETED);
         taskRepository.save(task);
-
-        activityLogService.logActivity(
-                task,
-                user,
-                ActionType.COMPLETED,
-                "Task marked as completed"
-        );
+        activityLogService.logActivity(task, user, ActionType.COMPLETED, "Task marked as completed");
     }
-
 
     public void reassignTask(Long taskId, Long userId) {
-
-        Task task = taskRepository.findById(taskId)
-                .orElseThrow(() -> new RuntimeException("Task not found"));
-
-        User newUser = userRepository.findById(userId)
-                .orElseThrow(() -> new RuntimeException("User not found"));
-
+        Task task = taskRepository.findById(taskId).orElseThrow(() -> new RuntimeException("Task not found"));
+        User newUser = userRepository.findById(userId).orElseThrow(() -> new RuntimeException("User not found"));
         task.setAssignedTo(newUser);
         taskRepository.save(task);
+        activityLogService.logActivity(task, newUser, ActionType.REASSIGNED, "Task reassigned");
+    }
 
-        activityLogService.logActivity(
-                task,
-                newUser,
-                ActionType.REASSIGNED,
-                "Task reassigned to another user"
-        );
+    public @Nullable List<Task> getTasksByAssignedUserEmail(String userEmail) {
+        return taskRepository.findByAssignedToEmail(userEmail);
+    }
+
+    public void completeTaskByEmail(Long id, String email) {
+        Task task = taskRepository.findById(id)
+                .orElseThrow(() -> new RuntimeException("Task not found with id: " + id));
+
+        task.setStatus(TaskStatus.COMPLETED);
+
+        taskRepository.save(task);
     }
 }
-
-

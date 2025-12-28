@@ -21,6 +21,7 @@ public class Task {
     private Long id;
 
     private String title;
+    @Column(columnDefinition = "TEXT")
     private String description;
 
     @Enumerated(EnumType.STRING)
