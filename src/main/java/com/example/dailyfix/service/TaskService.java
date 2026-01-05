@@ -4,13 +4,16 @@ import com.example.dailyfix.enums.ActionType;
 import com.example.dailyfix.enums.Priority;
 import com.example.dailyfix.enums.Role;
 import com.example.dailyfix.enums.TaskStatus;
+import com.example.dailyfix.model.ActivityLog;
 import com.example.dailyfix.model.Message;
 import com.example.dailyfix.model.Task;
 import com.example.dailyfix.model.User;
+import com.example.dailyfix.repository.ActivityLogRepository;
 import com.example.dailyfix.repository.TaskRepository;
 import com.example.dailyfix.repository.UserRepository;
 import org.jspecify.annotations.Nullable;
 import org.springframework.stereotype.Service;
+import org.springframework.transaction.annotation.Transactional;
 
 import java.time.LocalDateTime;
 import java.util.List;
@@ -22,13 +25,16 @@ public class TaskService {
     private final TaskRepository taskRepository;
     private final UserRepository userRepository;
     private final ActivityLogService activityLogService;
+    private final ActivityLogRepository activityLogRepository;
 
     public TaskService(TaskRepository taskRepository,
                        UserRepository userRepository,
-                       ActivityLogService activityLogService) {
+                       ActivityLogService activityLogService,
+                        ActivityLogRepository activityLogRepository) {
         this.taskRepository = taskRepository;
         this.userRepository = userRepository;
         this.activityLogService = activityLogService;
+        this.activityLogRepository = activityLogRepository;
     }
 
     public void createTaskFromMessage(Message message) {
@@ -122,12 +128,30 @@ public class TaskService {
         return taskRepository.findByAssignedToEmail(userEmail);
     }
 
+
+    @Transactional
     public void completeTaskByEmail(Long id, String email) {
+        // 1. Find the task
         Task task = taskRepository.findById(id)
-                .orElseThrow(() -> new RuntimeException("Task not found with id: " + id));
+                .orElseThrow(() -> new RuntimeException("Task not found"));
 
+        // 2. Find the user performing the action
+        User user = userRepository.findByEmail(email)
+                .orElseThrow(() -> new RuntimeException("User not found"));
+
+        // 3. Update the task status
         task.setStatus(TaskStatus.COMPLETED);
-
         taskRepository.save(task);
+
+        // 4. LOG THE ACTIVITY
+        ActivityLog log = new ActivityLog();
+        log.setTask(task);
+        log.setPerformedBy(user);
+        log.setAction(ActionType.COMPLETED); // Using the ActionType enum
+        log.setPerformedAt(LocalDateTime.now());
+        log.setRemarks("Task completed via secure API endpoint");
+
+        activityLogRepository.save(log);
+
     }
 }

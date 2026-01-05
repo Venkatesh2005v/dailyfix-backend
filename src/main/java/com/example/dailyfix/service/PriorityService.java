@@ -2,119 +2,85 @@ package com.example.dailyfix.service;
 
 import com.example.dailyfix.enums.*;
 import com.example.dailyfix.model.Message;
-import com.example.dailyfix.model.MessageInteraction;
-import com.example.dailyfix.model.SenderProfile;
-import com.example.dailyfix.repository.MessageInteractionRepository;
-import com.example.dailyfix.repository.SenderProfileRepository;
+import org.json.JSONObject;
+import org.springframework.beans.factory.annotation.Value;
+import org.springframework.http.*;
 import org.springframework.stereotype.Service;
+import org.springframework.web.client.RestTemplate;
+import org.springframework.web.util.HtmlUtils;
 
-import java.util.List;
-import java.util.Optional;
+import java.util.Map;
 
 @Service
 public class PriorityService {
 
-    private final SenderProfileRepository senderProfileRepository;
-    private final MessageInteractionRepository messageInteractionRepository;
+    @Value("${gemini.api.key}")
+    private String apiKey;
 
-    public PriorityService(SenderProfileRepository senderProfileRepository,
-                           MessageInteractionRepository messageInteractionRepository) {
-        this.senderProfileRepository = senderProfileRepository;
-        this.messageInteractionRepository = messageInteractionRepository;
-    }
+    private final String API_URL = "https://generativelanguage.googleapis.com/v1beta/models/gemini-1.5-flash:generateContent?key=";
+    private final RestTemplate restTemplate = new RestTemplate();
 
-    public Priority calculatePriority(Message message) {
-        int totalScore = 0;
+    // FIXED: Now accepts TrustLevel as the second argument
+    public Priority calculatePriority(Message message, TrustLevel trust) {
+        try {
+            // 1. Sanitize input to prevent HTML tags from confusing the AI
+            String cleanSubject = HtmlUtils.htmlUnescape(message.getSubject());
+            String cleanContent = HtmlUtils.htmlUnescape(message.getContent());
 
-        totalScore += calculateTrustScore(message);
-        totalScore += calculateIntentScore(message);
-        totalScore += calculateSourceScore(message);
-        totalScore += calculateKeywordScore(message);
-        totalScore += calculateUserBehaviorScore(message);
+            // 2. Industry-Grade System Prompt (Persona + Heuristics + Examples)
+            String prompt = String.format("""
+            # PERSONA: Senior Executive Assistant
+            # GOAL: Triage emails for a high-priority software lead.
+            # SENDER TRUST: %s (High trust = verify requests; Low trust = be skeptical).
 
-        return mapScoreToPriority(totalScore);
-    }
+            # CATEGORIZATION RULES:
+            - HIGH: System failures, production issues, deadlines < 24h, or direct boss requests.
+            - MEDIUM: Project updates, internal follow-ups, or standard client meetings.
+            - LOW: Newsletters, general industry updates, or non-urgent internal FYIs.
+            - SILENT: Automated system notifications (Social media, generic Google alerts).
 
-    private int calculateUserBehaviorScore(Message message) {
-        String domain = extractDomain(message.getSenderEmail());
-        List<MessageInteraction> interactions =
-                messageInteractionRepository.findByMessage_SenderDomain(domain);
+            # EXAMPLES:
+            - "Urgent: Database resize needed in 2h" -> {"priority": "HIGH", "intent": "ACTION_REQUIRED"}
+            - "Your weekly GitHub report" -> {"priority": "SILENT", "intent": "INFORMATIONAL"}
 
-        if (interactions.isEmpty()) return 0;
+            # CURRENT EMAIL:
+            Subject: %s
+            Content: %s
 
-        long openedCount = interactions.stream()
-                .filter(i -> i.getAction() == InteractionType.OPENED).count();
-        long ignoredCount = interactions.stream()
-                .filter(i -> i.getAction() == InteractionType.IGNORED).count();
+            Return JSON ONLY: {"priority": "HIGH|MEDIUM|LOW|SILENT", "intent": "ACTION_REQUIRED|INFORMATIONAL|PROMOTIONAL", "reason": "why"}
+            """, trust.name(), cleanSubject, cleanContent);
 
-        if (ignoredCount > openedCount) return -40;
-        if (openedCount >= ignoredCount) return 10;
-        return -10;
-    }
+            Map<String, Object> body = Map.of("contents", new Object[]{
+                    Map.of("parts", new Object[]{Map.of("text", prompt)})
+            });
 
-    private int calculateTrustScore(Message message) {
-        if (message.getSenderEmail() == null) return -10;
-        String domain = extractDomain(message.getSenderEmail());
-        Optional<SenderProfile> senderProfile = senderProfileRepository.findBySenderDomain(domain);
+            HttpHeaders headers = new HttpHeaders();
+            headers.setContentType(MediaType.APPLICATION_JSON);
+            HttpEntity<Map<String, Object>> entity = new HttpEntity<>(body, headers);
 
-        if (senderProfile.isEmpty()) return -10;
+            // CORRECTED: Explicitly declaring the 'response' variable here
+            ResponseEntity<String> response = restTemplate.postForEntity(API_URL + apiKey, entity, String.class);
 
-        TrustLevel trust = senderProfile.get().getTrustLevel();
-        return switch (trust) {
-            case HIGH -> 40;
-            case MEDIUM -> 20;
-            case LOW -> -30;
-        };
-    }
+            if (response.getBody() == null) return Priority.SILENT;
 
-    private int calculateIntentScore(Message message) {
-        String subject = message.getSubject() == null ? "" : message.getSubject();
-        String content = message.getContent() == null ? "" : message.getContent();
-        String text = (subject + " " + content).toLowerCase();
+            // 3. Robust JSON Extraction
+            JSONObject json = new JSONObject(response.getBody());
+            String rawText = json.getJSONArray("candidates").getJSONObject(0)
+                    .getJSONObject("content").getJSONArray("parts").getJSONObject(0)
+                    .getString("text");
 
-        if (text.contains("failed") || text.contains("action required") || text.contains("urgent")) {
-            message.setIntent(MessageIntent.ACTION_REQUIRED);
-            return 40;
+            // Remove markdown formatting (```json ... ```) if Gemini returns it
+            String cleanJson = rawText.replaceAll("(?s)^.*?\\{", "{").replaceAll("\\}.*?$", "}");
+            JSONObject result = new JSONObject(cleanJson);
+
+            message.setIntent(MessageIntent.valueOf(result.getString("intent")));
+            System.out.println("AI Decision Reason: " + result.getString("reason"));
+
+            return Priority.valueOf(result.getString("priority"));
+
+        } catch (Exception e) {
+            System.err.println("Gemini analysis failed: " + e.getMessage());
+            return Priority.SILENT;
         }
-        if (text.contains("invoice") || text.contains("update") || text.contains("meeting")) {
-            message.setIntent(MessageIntent.INFORMATIONAL);
-            return 10;
-        }
-        message.setIntent(MessageIntent.PROMOTIONAL);
-        return -50;
-    }
-
-    private int calculateSourceScore(Message message) {
-        SourceType source = message.getSourceType();
-        if (source == null) return 0;
-        return switch (source) {
-            case SYSTEM -> 30;
-            case INTERNAL -> 20;
-            case EMAIL -> 0;
-        };
-    }
-
-    private int calculateKeywordScore(Message message) {
-        if (message.getContent() == null) return 0;
-        String text = message.getContent().toLowerCase();
-        int score = 0;
-
-        // AUTOMATIC DETECTION KEYWORDS
-        if (text.contains("error") || text.contains("failed") || text.contains("critical")) score += 25;
-        if (text.contains("deadline") || text.contains("asap") || text.contains("immediately")) score += 20;
-
-        return score;
-    }
-
-    private Priority mapScoreToPriority(int score) {
-        if (score >= 60) return Priority.HIGH;
-        if (score >= 30) return Priority.MEDIUM;
-        if (score >= 10) return Priority.LOW;
-        return Priority.SILENT;
-    }
-
-    private String extractDomain(String email) {
-        if (!email.contains("@")) return "";
-        return email.substring(email.indexOf("@") + 1).toLowerCase();
     }
 }

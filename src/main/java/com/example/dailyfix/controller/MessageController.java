@@ -1,14 +1,11 @@
 package com.example.dailyfix.controller;
 
-import com.example.dailyfix.dto.request.MessageRequest;
 import com.example.dailyfix.enums.Priority;
 import com.example.dailyfix.model.Message;
 import com.example.dailyfix.service.MessageService;
-import org.springframework.http.HttpStatus;
 import org.springframework.http.ResponseEntity;
-import org.springframework.security.core.Authentication; // Added for security context
+import org.springframework.security.core.Authentication;
 import org.springframework.web.bind.annotation.*;
-
 import java.util.List;
 
 @RestController
@@ -22,38 +19,33 @@ public class MessageController {
     }
 
     /**
-     * Gets all messages belonging to the CURRENT logged-in user.
+     * MANUAL SYNC: Triggers the @Async fetch.
+     * Use this to test the Gemini analysis immediately.
      */
+    @PostMapping("/sync")
+    public ResponseEntity<String> triggerSync(Authentication authentication) {
+        messageService.fetchAndProcessGmail(authentication);
+        return ResponseEntity.ok("Gemini AI sync started in the background! Refresh in 30 seconds.");
+    }
+
     @GetMapping("/my-messages")
     public ResponseEntity<List<Message>> getMyMessages(Authentication authentication) {
-        // authentication.getName() retrieves the email from the Google OAuth2 session
-        String userEmail = authentication.getName();
-        return ResponseEntity.ok(messageService.getMessagesByUserEmail(userEmail));
+        return ResponseEntity.ok(messageService.getMessagesByUserEmail(authentication.getName()));
     }
 
     /**
-     * Filters the current user's messages by priority.
+     * AI-FILTERED VIEW: Use this to see only "HIGH" priority items confirmed by Gemini.
      */
-    @GetMapping("/my-messages/priority/{priority}")
-    public ResponseEntity<List<Message>> getMyMessagesByPriority(
+    @GetMapping("/priority/{priority}")
+    public ResponseEntity<List<Message>> getByPriority(
             Authentication authentication,
             @PathVariable Priority priority) {
-        String userEmail = authentication.getName();
-        return ResponseEntity.ok(messageService.getMessagesByUserEmailAndPriority(userEmail, priority));
-    }
-
-    @GetMapping("/{id}")
-    public ResponseEntity<Message> getMessageById(Authentication authentication, @PathVariable Long id) {
-        // Optional: Add logic in service to verify the message owner matches the authentication
-        return ResponseEntity.ok(messageService.getMessageById(id));
+        return ResponseEntity.ok(messageService.getMessagesByUserEmailAndPriority(authentication.getName(), priority));
     }
 
     @PostMapping("/{id}/reprocess")
-    public ResponseEntity<String> reprocessMessage(@PathVariable Long id) {
+    public ResponseEntity<String> reprocess(@PathVariable Long id) {
         messageService.reprocessMessage(id);
-        return ResponseEntity.ok("Message reprocessed successfully");
+        return ResponseEntity.ok("Message re-analyzed by AI successfully.");
     }
-
-    // Note: receiveMessage via PathVariable Long userId is less secure for public APIs.
-    // It is better to use the authenticated session whenever possible.
 }

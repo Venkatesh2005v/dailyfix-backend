@@ -105,6 +105,11 @@
 				<artifactId>google-api-services-gmail</artifactId>
 				<version>v1-rev20220404-2.0.0</version>
 			</dependency>
+		<dependency>
+			<groupId>org.json</groupId>
+			<artifactId>json</artifactId>
+			<version>20231013</version>
+		</dependency>
 	</dependencies>
 
 	<build>

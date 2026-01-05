@@ -44,4 +44,8 @@ public class Message {
     private Priority priority;
 
     private boolean processed;
+
+    @Column(unique = true)
+    private String gmailId;
+
 }

@@ -13,20 +13,8 @@ import java.util.Optional;
 @Repository
 public interface MessageRepository extends JpaRepository<Message, Long> {
 
-    List<Message> findByPriority(Priority priority);
-
-    List<Message> findByProcessedFalse();
-
-    // Fetches only messages belonging to a specific user email
+    boolean existsByGmailId(String gmailId);
     List<Message> findByUserEmail(String email);
-
-    // Alternatively, fetch by User object
-    List<Message> findByUser(User user);
-
-    @Nullable List<Message> findByUserEmailAndPriority(String userEmail, Priority priority);
-
-    @Nullable List<Message> getMessagesByUserEmail(String userEmail);
-
-    @Nullable List<Message> getMessagesByUserEmailAndPriority(String userEmail, Priority priority);
+    List<Message> findByUserEmailAndPriority(String email, Priority priority);
 }
 
