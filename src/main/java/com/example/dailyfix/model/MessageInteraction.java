@@ -7,7 +7,6 @@ import lombok.Data;
 import lombok.NoArgsConstructor;
 
 import java.time.LocalDateTime;
-import java.util.Date;
 
 @Entity
 @Data
@@ -20,14 +19,19 @@ public class MessageInteraction {
     private Long id;
 
     @ManyToOne
+    @JoinColumn(name = "user_id") // Best practice to explicitly name join columns
     private User user;
 
     @ManyToOne
+    @JoinColumn(name = "message_id")
     private Message message;
 
     @Enumerated(EnumType.STRING)
     private InteractionType action;
 
     private LocalDateTime interactedAt;
-}
 
+    // --- NEW FIELD ---
+    @Column(columnDefinition = "TEXT")
+    private String feedbackNotes; // Stores "Spam", "Not Urgent", etc.
+}

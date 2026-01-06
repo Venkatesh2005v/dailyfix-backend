@@ -74,7 +74,7 @@ public class MessageService {
                     .setHttpRequestInitializer(request -> request.getHeaders().setAuthorization("Bearer " + accessToken))
                     .setApplicationName("DailyFix").build();
 
-            String query = "{category:primary category:social category:promotions category:updates} newer_than:1d";
+            String query = "label:INBOX newer_than:3d";
             ListMessagesResponse response = gmail.users().messages().list("me").setQ(query).execute();
 
             if (response.getMessages() != null) {

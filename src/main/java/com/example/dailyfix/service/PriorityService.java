@@ -17,7 +17,8 @@ public class PriorityService {
     @Value("${gemini.api.key}")
     private String apiKey;
 
-    private final String API_URL = "https://generativelanguage.googleapis.com/v1beta/models/gemini-1.5-flash:generateContent?key=";
+    private final String API_URL =
+            "https://generativelanguage.googleapis.com/v1beta/models/gemini-2.0-flash:generateContent?key=";
     private final RestTemplate restTemplate = new RestTemplate();
 
     // FIXED: Now accepts TrustLevel as the second argument
@@ -61,7 +62,10 @@ public class PriorityService {
             // CORRECTED: Explicitly declaring the 'response' variable here
             ResponseEntity<String> response = restTemplate.postForEntity(API_URL + apiKey, entity, String.class);
 
-            if (response.getBody() == null) return Priority.SILENT;
+            if (response.getBody() == null) {
+                System.err.println("❌ AI Error: Empty Response Body");
+                return Priority.SILENT;
+            }
 
             // 3. Robust JSON Extraction
             JSONObject json = new JSONObject(response.getBody());
