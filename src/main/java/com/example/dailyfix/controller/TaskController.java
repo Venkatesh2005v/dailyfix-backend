@@ -26,10 +26,19 @@ public class TaskController {
         return taskService.getAllTasks();
     }
 
-    // --- 2. GET MY TASKS ---
+    // --- 2. GET MY TASKS (Updated for Simultaneous Refresh) ---
     @GetMapping("/my-tasks")
-    public List<Task> getMyTasks(Authentication authentication) {
-        String email = getEmailFromAuth(authentication); // Now calls the helper below
+    public List<Task> getMyTasks(
+            @RequestParam(required = false) Long messageId,
+            Authentication authentication
+    ) {
+        String email = getEmailFromAuth(authentication);
+
+        // If a messageId is passed from React, filter the results
+        if (messageId != null) {
+            return taskService.getTasksByMessageIdAndEmail(messageId, email);
+        }
+
         return taskService.getTasksByAssignedUserEmail(email);
     }
 
@@ -45,11 +54,11 @@ public class TaskController {
         }
     }
 
-    // --- 4. DISMISS TASK (New) ---
+    // --- 4. DISMISS TASK ---
     @PostMapping("/{id}/dismiss")
     public ResponseEntity<?> dismissTask(
             @PathVariable Long id,
-            @RequestBody Map<String, String> payload, // Expects JSON: {"reason": "Not Urgent"}
+            @RequestBody Map<String, String> payload,
             Authentication authentication
     ) {
         String email = getEmailFromAuth(authentication);
@@ -63,8 +72,6 @@ public class TaskController {
         }
     }
 
-    // --- PRIVATE HELPER METHOD ---
-    // (Must be inside the "public class TaskController" brackets)
     private String getEmailFromAuth(Authentication authentication) {
         if (authentication instanceof OAuth2AuthenticationToken oauthToken) {
             return oauthToken.getPrincipal().getAttribute("email");

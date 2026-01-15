@@ -9,10 +9,12 @@ import com.google.api.services.gmail.Gmail;
 import com.google.api.services.gmail.model.ListMessagesResponse;
 import com.google.api.services.gmail.model.MessagePartHeader;
 import com.google.api.services.gmail.model.ModifyMessageRequest;
+import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.scheduling.annotation.Async;
 import org.springframework.security.core.Authentication;
+import org.springframework.security.oauth2.client.OAuth2AuthorizeRequest;
 import org.springframework.security.oauth2.client.OAuth2AuthorizedClient;
-import org.springframework.security.oauth2.client.OAuth2AuthorizedClientService;
+import org.springframework.security.oauth2.client.OAuth2AuthorizedClientManager;
 import org.springframework.security.oauth2.client.authentication.OAuth2AuthenticationToken;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
@@ -29,51 +31,74 @@ public class MessageService {
     private final PriorityService priorityService;
     private final TaskService taskService;
     private final UserRepository userRepository;
-    private final OAuth2AuthorizedClientService authorizedClientService;
     private final AlertWhitelistRepository alertWhitelistRepository;
     private final SenderProfileRepository senderProfileRepository;
+
+    @Autowired
+    private OAuth2AuthorizedClientManager authorizedClientManager;
 
     public MessageService(MessageRepository messageRepository,
                           PriorityService priorityService,
                           TaskService taskService,
                           UserRepository userRepository,
-                          OAuth2AuthorizedClientService authorizedClientService,
                           AlertWhitelistRepository alertWhitelistRepository,
                           SenderProfileRepository senderProfileRepository) {
         this.messageRepository = messageRepository;
         this.priorityService = priorityService;
         this.taskService = taskService;
         this.userRepository = userRepository;
-        this.authorizedClientService = authorizedClientService;
         this.alertWhitelistRepository = alertWhitelistRepository;
         this.senderProfileRepository = senderProfileRepository;
     }
 
+    /**
+     * Entry point for manual sync from the Frontend.
+     */
     @Async
     public void fetchAndProcessGmail(Authentication authentication) {
         String email = (authentication instanceof OAuth2AuthenticationToken oauthToken)
                 ? oauthToken.getPrincipal().getAttribute("email")
                 : authentication.getName();
 
-        System.out.println("--- Starting Gmail Sync for: " + email + " ---");
+        System.out.println("--- Starting Manual Gmail Sync for: " + email + " ---");
         processWithToken(email);
     }
 
+    /**
+     * Core logic used by both manual sync and background scheduler.
+     * Uses OAuth2AuthorizedClientManager to handle automatic token refresh.
+     */
     public void processWithToken(String email) {
         try {
             User user = userRepository.findByEmail(email)
                     .orElseThrow(() -> new RuntimeException("User not found: " + email));
 
-            OAuth2AuthorizedClient client = authorizedClientService.loadAuthorizedClient("google", email);
-            if (client == null) return;
+            // 1. Get/Refresh the Access Token
+            OAuth2AuthorizeRequest authorizeRequest = OAuth2AuthorizeRequest.withClientRegistrationId("google")
+                    .principal(email)
+                    .build();
 
-            String accessToken = client.getAccessToken().getTokenValue();
+            // This requires AuthorizedClientServiceOAuth2AuthorizedClientManager in your Config
+            OAuth2AuthorizedClient authorizedClient = authorizedClientManager.authorize(authorizeRequest);
 
-            Gmail gmail = new Gmail.Builder(GoogleNetHttpTransport.newTrustedTransport(),
-                    GsonFactory.getDefaultInstance(), null)
-                    .setHttpRequestInitializer(request -> request.getHeaders().setAuthorization("Bearer " + accessToken))
-                    .setApplicationName("DailyFix").build();
+            if (authorizedClient == null) {
+                System.err.println("CRITICAL: No authorized client found for " + email + ". User must re-login.");
+                return;
+            }
 
+            String freshAccessToken = authorizedClient.getAccessToken().getTokenValue();
+
+            // 2. Build Gmail API Client
+            Gmail gmail = new Gmail.Builder(
+                    GoogleNetHttpTransport.newTrustedTransport(),
+                    GsonFactory.getDefaultInstance(),
+                    null)
+                    .setHttpRequestInitializer(request ->
+                            request.getHeaders().setAuthorization("Bearer " + freshAccessToken))
+                    .setApplicationName("DailyFix")
+                    .build();
+
+            // 3. Fetch messages from last 3 days
             String query = "label:INBOX newer_than:3d";
             ListMessagesResponse response = gmail.users().messages().list("me").setQ(query).execute();
 
@@ -87,23 +112,39 @@ public class MessageService {
 
                     Message message = mapGmailToEntity(fullEmail, user);
                     message.setGmailId(msgSummary.getId());
-
                     message = messageRepository.save(message);
 
-                    processMessage(message);
+                    // --- FIX FOR 429 ERRORS: Isolated Priority Processing ---
+                    try {
+                        processMessage(message);
+
+                        // Pause for 2 seconds between emails to avoid Gemini Free Tier rate limits
+                        Thread.sleep(2000);
+                    } catch (Exception aiEx) {
+                        System.err.println("Gemini analysis failed for message: " + message.getGmailId() + " - " + aiEx.getMessage());
+                        // We don't throw the error here so that the loop continues to the next email
+                    }
 
                     markMessageAsRead(gmail, msgSummary.getId());
                 }
             }
+            System.out.println("Sync successfully completed for: " + email);
+
         } catch (Exception e) {
-            System.err.println("Sync Error: " + e.getMessage());
+            // If we hit a 401 here, it's likely the Refresh Token itself is expired/revoked
+            System.err.println("Outer Sync Error: " + e.getMessage());
+            e.printStackTrace();
         }
     }
 
+    /**
+     * Analyzes message priority and generates tasks for High/Medium priority items.
+     */
     @Transactional
     public void processMessage(Message message) {
         String domain = message.getSenderDomain();
 
+        // Check whitelist
         boolean isWhitelisted = alertWhitelistRepository.findBySenderDomain(domain)
                 .map(AlertWhitelist::isAlertEnabled)
                 .orElse(false);
@@ -115,6 +156,7 @@ public class MessageService {
             return;
         }
 
+        // Determine Trust & Calculate Priority via Gemini
         TrustLevel trust = senderProfileRepository.findBySenderDomain(domain)
                 .map(SenderProfile::getTrustLevel)
                 .orElse(TrustLevel.LOW);
@@ -122,6 +164,7 @@ public class MessageService {
         Priority priority = priorityService.calculatePriority(message, trust);
         message.setPriority(priority);
 
+        // Auto-create task if important
         if (priority == Priority.HIGH || priority == Priority.MEDIUM) {
             taskService.createTaskFromMessage(message);
         }
@@ -130,7 +173,7 @@ public class MessageService {
         messageRepository.save(message);
     }
 
-    // --- RE-ADDED MISSING METHODS TO RESOLVE COMPILER ERRORS ---
+    // --- DATA RETRIEVAL METHODS ---
 
     public List<Message> getMessagesByUserEmail(String userEmail) {
         return messageRepository.findByUserEmail(userEmail);
@@ -153,18 +196,26 @@ public class MessageService {
         Message message = new Message();
         List<MessagePartHeader> headers = gMsg.getPayload().getHeaders();
 
-        String subject = headers.stream().filter(h -> h.getName().equalsIgnoreCase("Subject"))
+        // Extract "Subject" and "From" from headers
+        String subject = headers.stream()
+                .filter(h -> h.getName().equalsIgnoreCase("Subject"))
                 .map(MessagePartHeader::getValue).findFirst().orElse("No Subject");
 
-        String from = headers.stream().filter(h -> h.getName().equalsIgnoreCase("From"))
+        String from = headers.stream()
+                .filter(h -> h.getName().equalsIgnoreCase("From"))
                 .map(MessagePartHeader::getValue).findFirst().orElse("Unknown");
 
         message.setSubject(subject);
         message.setSenderEmail(from);
 
-        if (from.contains("@")) {
-            String domain = from.substring(from.indexOf("@") + 1).replace(">", "").trim();
-            message.setSenderDomain(domain);
+        // Extract Domain for Whitelist checking
+        if (from != null && from.contains("@")) {
+            try {
+                String domain = from.substring(from.indexOf("@") + 1).split(">")[0].trim();
+                message.setSenderDomain(domain);
+            } catch (Exception e) {
+                message.setSenderDomain("unknown.com");
+            }
         }
 
         message.setContent(gMsg.getSnippet());

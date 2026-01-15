@@ -18,7 +18,7 @@ public class PriorityService {
     private String apiKey;
 
     private final String API_URL =
-            "https://generativelanguage.googleapis.com/v1beta/models/gemini-2.0-flash:generateContent?key=";
+            "https://generativelanguage.googleapis.com/v1beta/models/gemini-3-flash-preview:generateContent?key=";
     private final RestTemplate restTemplate = new RestTemplate();
 
     // FIXED: Now accepts TrustLevel as the second argument
