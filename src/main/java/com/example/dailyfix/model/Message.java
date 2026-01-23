@@ -48,4 +48,5 @@ public class Message {
     @Column(unique = true)
     private String gmailId;
 
+
 }

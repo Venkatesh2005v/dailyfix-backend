@@ -119,9 +119,6 @@ public class TaskService {
         return taskRepository.findByAssignedToEmail(userEmail);
     }
 
-    public Optional<Task> getTaskById(Long id) {
-        return taskRepository.findById(id);
-    }
 
     public List<Task> getAllTasks() {
         return taskRepository.findAll();
@@ -159,5 +156,22 @@ public class TaskService {
 
     private void sendPriorityAlert(Message message) {
         System.out.println("🚨 HIGH PRIORITY ALERT: " + message.getSubject());
+    }
+
+
+    public void updateTaskStatus(Long id, String status) {
+        Optional<Task> taskOptional = taskRepository.findById(id);
+        if (taskOptional.isPresent()) {
+            Task task = taskOptional.get();
+            // Convert String from frontend (e.g., "COMPLETED") to your Enum
+            task.setStatus(TaskStatus.valueOf(status.toUpperCase()));
+            taskRepository.save(task);
+        }
+    }
+
+    // FIX 2: Handle Optional properly for the Controller
+    public Task getTaskById(Long id) {
+        return taskRepository.findById(id)
+                .orElseThrow(() -> new RuntimeException("Task not found with id: " + id));
     }
 }

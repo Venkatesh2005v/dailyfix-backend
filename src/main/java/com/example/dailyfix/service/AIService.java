@@ -70,4 +70,13 @@ public class AIService {
             return "Intelligence offline. Manual review required.";
         }
     }
+
+    public String generateDraft(String context) {
+        String prompt = "Review the following task/email context and write a professional " +
+                "reply message (max 3 sentences). Do not use placeholders like [Name]. " +
+                "Context: " + context;
+
+        // Uses your existing callGemini logic
+        return callGemini(prompt);
+    }
 }

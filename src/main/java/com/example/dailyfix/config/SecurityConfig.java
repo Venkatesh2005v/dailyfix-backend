@@ -3,6 +3,7 @@ package com.example.dailyfix.config;
 import com.example.dailyfix.service.CustomOAuth2UserService;
 import org.springframework.context.annotation.Bean;
 import org.springframework.context.annotation.Configuration;
+import org.springframework.http.HttpStatus;
 import org.springframework.jdbc.core.JdbcTemplate;
 import org.springframework.security.config.annotation.web.builders.HttpSecurity;
 import org.springframework.security.config.annotation.web.configuration.EnableWebSecurity;
@@ -10,6 +11,7 @@ import org.springframework.security.oauth2.client.JdbcOAuth2AuthorizedClientServ
 import org.springframework.security.oauth2.client.OAuth2AuthorizedClientService;
 import org.springframework.security.oauth2.client.registration.ClientRegistrationRepository;
 import org.springframework.security.web.SecurityFilterChain;
+import org.springframework.security.web.authentication.HttpStatusEntryPoint;
 import org.springframework.web.cors.CorsConfiguration;
 import org.springframework.web.cors.CorsConfigurationSource;
 import org.springframework.web.cors.UrlBasedCorsConfigurationSource;
@@ -36,28 +38,24 @@ public class SecurityConfig {
     @Bean
     public SecurityFilterChain filterChain(HttpSecurity http) throws Exception {
         http
-                // 1. Enable CORS using our custom bean below
                 .cors(cors -> cors.configurationSource(corsConfigurationSource()))
-
-                // 2. Disable CSRF for REST APIs (Standard for stateless or cross-origin dev)
                 .csrf(csrf -> csrf.disable())
-
-                // 3. Define Access Rules
                 .authorizeHttpRequests(auth -> auth
+                        // Permit OPTIONS requests for CORS preflight
+                        .requestMatchers(org.springframework.http.HttpMethod.OPTIONS, "/**").permitAll()
                         .requestMatchers("/", "/login/**", "/oauth2/**", "/api/user/me").permitAll()
                         .anyRequest().authenticated()
                 )
-
-                // 4. Configure OAuth2 Login
+                // FIX: Handle unauthorized API calls with 401 instead of 302 Redirect
+                .exceptionHandling(e -> e
+                        .authenticationEntryPoint(new HttpStatusEntryPoint(HttpStatus.UNAUTHORIZED))
+                )
                 .oauth2Login(oauth2 -> oauth2
                         .userInfoEndpoint(userInfo -> userInfo
                                 .oidcUserService(customOAuth2UserService)
                         )
-                        // FORCE redirect to the frontend dashboard after login
                         .defaultSuccessUrl("http://localhost:3000/dashboard", true)
                 )
-
-                // 5. Configure Logout to redirect back to frontend
                 .logout(logout -> logout
                         .logoutSuccessUrl("http://localhost:3000/")
                         .deleteCookies("JSESSIONID")

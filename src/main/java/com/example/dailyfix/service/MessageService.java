@@ -9,6 +9,7 @@ import com.google.api.services.gmail.Gmail;
 import com.google.api.services.gmail.model.ListMessagesResponse;
 import com.google.api.services.gmail.model.MessagePartHeader;
 import com.google.api.services.gmail.model.ModifyMessageRequest;
+import org.apache.commons.codec.binary.Base64;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.scheduling.annotation.Async;
 import org.springframework.security.core.Authentication;
@@ -19,10 +20,16 @@ import org.springframework.security.oauth2.client.authentication.OAuth2Authentic
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
+import javax.mail.Session;
+import javax.mail.internet.InternetAddress;
+import javax.mail.internet.MimeMessage;
+import java.util.Properties;
+import java.io.ByteArrayOutputStream;
 import java.io.IOException;
 import java.time.LocalDateTime;
 import java.util.Collections;
 import java.util.List;
+
 
 @Service
 public class MessageService {
@@ -33,6 +40,9 @@ public class MessageService {
     private final UserRepository userRepository;
     private final AlertWhitelistRepository alertWhitelistRepository;
     private final SenderProfileRepository senderProfileRepository;
+
+    @Autowired
+    private com.google.api.services.gmail.Gmail gmailService;
 
     @Autowired
     private OAuth2AuthorizedClientManager authorizedClientManager;
@@ -225,6 +235,58 @@ public class MessageService {
         message.setUser(user);
 
         return message;
+    }
+
+    public void sendNewEmail(String to, String subject, String bodyText) {
+        // 1. Get the current authentication
+        org.springframework.security.core.Authentication authentication =
+                org.springframework.security.core.context.SecurityContextHolder.getContext().getAuthentication();
+
+        // 2. Build a refresh request
+        org.springframework.security.oauth2.client.OAuth2AuthorizeRequest authorizeRequest =
+                org.springframework.security.oauth2.client.OAuth2AuthorizeRequest.withClientRegistrationId("google")
+                        .principal(authentication)
+                        .build();
+
+        // 3. Let the Manager handle the token (it will refresh if expired!)
+        org.springframework.security.oauth2.client.OAuth2AuthorizedClient authorizedClient =
+                this.authorizedClientManager.authorize(authorizeRequest);
+
+        if (authorizedClient == null) {
+            throw new RuntimeException("Client authorization failed - Try logging out and in.");
+        }
+
+        String accessToken = authorizedClient.getAccessToken().getTokenValue();
+
+        try {
+            // 4. Initialize Gmail Service
+            com.google.api.services.gmail.Gmail gmailService = new com.google.api.services.gmail.Gmail.Builder(
+                    com.google.api.client.googleapis.javanet.GoogleNetHttpTransport.newTrustedTransport(),
+                    com.google.api.client.json.gson.GsonFactory.getDefaultInstance(),
+                    request -> request.getHeaders().setAuthorization("Bearer " + accessToken)
+            ).setApplicationName("DailyFix").build();
+
+            // 5. Construct & Send
+            Properties props = new Properties();
+            javax.mail.Session session = javax.mail.Session.getInstance(props, null);
+            javax.mail.internet.MimeMessage email = new javax.mail.internet.MimeMessage(session);
+            email.setFrom(new javax.mail.internet.InternetAddress("me"));
+            email.addRecipient(javax.mail.Message.RecipientType.TO, new javax.mail.internet.InternetAddress(to));
+            email.setSubject(subject);
+            email.setText(bodyText);
+
+            java.io.ByteArrayOutputStream buffer = new java.io.ByteArrayOutputStream();
+            email.writeTo(buffer);
+            String encodedEmail = org.apache.commons.codec.binary.Base64.encodeBase64URLSafeString(buffer.toByteArray());
+
+            com.google.api.services.gmail.model.Message gmailMessage = new com.google.api.services.gmail.model.Message();
+            gmailMessage.setRaw(encodedEmail);
+
+            gmailService.users().messages().send("me", gmailMessage).execute();
+
+        } catch (Exception e) {
+            throw new RuntimeException("Gmail Transmission Error: " + e.getMessage());
+        }
     }
 
     private void markMessageAsRead(Gmail gmail, String messageId) throws IOException {
